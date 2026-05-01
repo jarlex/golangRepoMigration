@@ -103,6 +103,100 @@ Ejemplo:
 chore: migrate module path (my-service)
 ```
 
+## Operaciones sobre el mismo CSV: preparar workspace y push
+
+Además de la CLI principal, este repo incluye dos scripts para operar sobre el **mismo CSV**:
+
+```csv
+bb_repo,gh_repo,module_old,module_new,next_tag,status,notes
+```
+
+### 1) Preparar repos locales desde GHE
+
+Script: `scripts/prepare_repos.sh`
+
+Comportamiento:
+- Recorre filas en orden CSV.
+- Deriva ruta local como `<base-dir>/<org>/<repo>` desde `gh_repo`.
+- Si el repo no existe localmente, clona desde GHE.
+- Si ya existe (`.git` presente), no hace `fetch`/`pull`; solo reporta `skip_existing`.
+- Crea estructura de carpetas faltante.
+
+Uso SSH (default):
+
+```bash
+./scripts/prepare_repos.sh \
+  --csv ./migration.csv \
+  --base-dir /data/repos \
+  --ghe-host ghe.example.com
+```
+
+Uso HTTPS:
+
+```bash
+./scripts/prepare_repos.sh \
+  --csv ./migration.csv \
+  --base-dir /data/repos \
+  --ghe-host ghe.example.com \
+  --https
+```
+
+### 2) Push de cambios y tags a remotos
+
+Script: `scripts/push_repos.sh`
+
+Comportamiento:
+- Recorre filas en orden CSV.
+- Verifica que exista repo local.
+- Si la rama actual está por delante de su upstream, ejecuta `git push`.
+- Si `next_tag` existe en CSV y la tag existe localmente, ejecuta `git push origin <tag>` (sin recrear tag).
+- Soporta fail-fast configurable con `--stop-on-error` (default `true`).
+- Emite errores parseables por fila en formato:
+
+```text
+ERR_*|message=...|row=...|repo=...
+```
+
+Uso:
+
+```bash
+./scripts/push_repos.sh \
+  --csv ./migration.csv \
+  --base-dir /data/repos
+```
+
+Continuar aunque falle una fila:
+
+```bash
+./scripts/push_repos.sh \
+  --csv ./migration.csv \
+  --base-dir /data/repos \
+  --stop-on-error false
+```
+
+## Makefile: targets de conveniencia
+
+Se agregó un `Makefile` mínimo con dos targets:
+
+- `prepare-repos`
+- `push-repos`
+
+Variables:
+- `CSV` (default: `./migration.csv`)
+- `BASE_DIR` (default: `./repos`)
+- `GHE_HOST` (requerida para `prepare-repos`)
+- `PREPARE_PROTOCOL` (`ssh` default, `https` para `--https`)
+- `STOP_ON_ERROR` (`true` default)
+
+Ejemplos:
+
+```bash
+make prepare-repos CSV=./migration.csv BASE_DIR=/data/repos GHE_HOST=ghe.example.com
+make prepare-repos CSV=./migration.csv BASE_DIR=/data/repos GHE_HOST=ghe.example.com PREPARE_PROTOCOL=https
+make push-repos CSV=./migration.csv BASE_DIR=/data/repos
+make push-repos CSV=./migration.csv BASE_DIR=/data/repos STOP_ON_ERROR=false
+```
+
 ## Cómo reanudar tras un fallo
 
 Si una fila quedó en estado terminal por error y necesitas reintentarlo:
